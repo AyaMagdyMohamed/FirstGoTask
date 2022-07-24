@@ -3,12 +3,33 @@ package main
 import (
 	"fmt"
 
+	"encoding/json"
+
 	"github.com/go-redis/redis"
 	"github.com/go-stomp/stomp"
 )
 
-func main() {
+type Student struct {
+	Name string `json:"name"`
+	Age  int    `json:"age"`
+	Id   string `json:"id"`
+}
 
+func main() {
+	// get JSON from amq
+	conn, _ := stomp.Dial("tcp", "localhost:61616")
+	sub, err := conn.Subscribe("SampleQueue", stomp.AckAuto)
+	if err != nil {
+		fmt.Println("Coudnl't receive from queue")
+	}
+	msg := <-sub.C
+	println(string(msg.Body))
+
+	student := Student{}
+	json.Unmarshal(msg.Body, &student)
+
+	fmt.Println("studentEncoded ", student)
+	// connect to redis
 	client := redis.NewClient(&redis.Options{
 		Addr:     "localhost:6379",
 		Password: "",
@@ -17,23 +38,10 @@ func main() {
 
 	pong, err := client.Ping().Result()
 	fmt.Println(pong, err)
-
-	err = client.Set("name", "Aya", 0).Err()
-	// handle the error
+	// set JSON object to redis
+	err = client.Set(student.Id, msg.Body, 0).Err()
 	if err != nil {
 		fmt.Println(err)
 	}
-
-	// val, err := client.Get("name2").Result()
-	// if err != nil {
-	// 	fmt.Println(err)
-	// }
-
-	// fmt.Println(val)
-	conn, _ := stomp.Dial("tcp", "localhost:61616")
-	sub, _ := conn.Subscribe("TestQueue2", stomp.AckAuto)
-	msg := <-sub.C
-	println(string(msg.Body))
-
 	conn.Disconnect()
 }
